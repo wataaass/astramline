@@ -5,3 +5,14 @@
 input {
   padding: 0 12px;
 }
+#searchTime {
+  width: 180px;
+  height: 54px;
+  padding: 0 18px;
+  font-size: 22px;
+  font-weight: 800;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+}
