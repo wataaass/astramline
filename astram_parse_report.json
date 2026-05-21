@@ -1,0 +1,43 @@
+{
+  "total_trips": 490,
+  "counts": {
+    "holiday / 広域公園前方面": 101,
+    "holiday / 本通方面": 101,
+    "weekday / 広域公園前方面": 144,
+    "weekday / 本通方面": 144
+  },
+  "files": [
+    {
+      "file": "20260314_daiya.heijitu.kudari.pdf",
+      "service": "weekday",
+      "direction": "広域公園前方面",
+      "trips": 144,
+      "errors": []
+    },
+    {
+      "file": "20260314_daiya.heijitu.nobori.pdf",
+      "service": "weekday",
+      "direction": "本通方面",
+      "trips": 144,
+      "errors": []
+    },
+    {
+      "file": "20260314_daiya.kyujitu.kudari.pdf",
+      "service": "holiday",
+      "direction": "広域公園前方面",
+      "trips": 101,
+      "errors": []
+    },
+    {
+      "file": "20260314_daiya.kyujitu.nobori.pdf",
+      "service": "holiday",
+      "direction": "本通方面",
+      "trips": 101,
+      "errors": []
+    }
+  ],
+  "validation": {
+    "monotonic_errors": 0,
+    "note": "Times after midnight are normalized to 24:xx where needed. Blank cells represent trains not serving that station."
+  }
+}
