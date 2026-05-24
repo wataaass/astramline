@@ -10,6 +10,11 @@
 <label><span id="fromStationLabel">出発駅</span><select id="fromStation"></select></label>
 <button id="swapButton" class="swap route-only" type="button" aria-label="出発駅と到着駅を入れ替え">⇅</button>
 <label class="route-only"><span>到着駅</span><select id="toStation"></select></label>
+<div class="time-toggle" role="tablist" aria-label="時刻の基準">
+<button type="button" id="timeNow" class="time-btn active" role="tab" aria-selected="true">いまから</button>
+<button type="button" id="timeSpecify" class="time-btn" role="tab" aria-selected="false">時間指定</button>
+</div>
+<label id="timeInputWrap" class="time-input hidden"><span>出発したい時刻</span><input type="time" id="searchTime" step="60"></label>
 <div class="button-row"><button type="button" id="favoriteButton">お気に入り登録</button><button type="button" id="reloadButton" class="secondary">時刻表再読込</button></div>
 </section>
 <section class="card result"><div class="result-head"><span id="serviceBadge" class="badge">--</span><span id="directionText" class="muted">--</span></div><h2 id="mainTrain">読み込み中...</h2><p id="subInfo" class="muted"></p><div id="nextList" class="next-list"></div><div class="fare route-only" id="fareText">運賃 --</div></section>

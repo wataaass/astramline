@@ -91,12 +91,63 @@ function getSearchMode() {
   return s.searchMode === MODE_STATION ? MODE_STATION : MODE_ROUTE;
 }
 
+function isTimeSearch() {
+  return loadSettings().timeSearch === true;
+}
+
+function parseTimeInput(value) {
+  if (!value) return null;
+  const [h, m] = value.split(":").map(Number);
+  if (!Number.isInteger(h) || !Number.isInteger(m) || m < 0 || m > 59 || h < 0 || h > 29) return null;
+  return h * 60 + m;
+}
+
+function getSearchAfterMin(now) {
+  if (!isTimeSearch()) return nowMinutes(now);
+  const t = parseTimeInput($("searchTime").value);
+  return t !== null ? t : nowMinutes(now);
+}
+
+function timeSearchNote(now, afterMin, firstDepart) {
+  const nowMin = nowMinutes(now);
+  if (!isTimeSearch()) {
+    return `あと${firstDepart - nowMin}分`;
+  }
+  const base = `${formatHHMM(afterMin)} 以降`;
+  if (afterMin <= nowMin && firstDepart >= nowMin) {
+    return `${base}・次発まであと${firstDepart - nowMin}分`;
+  }
+  if (afterMin > nowMin && firstDepart > afterMin) {
+    return `${base}・あと${firstDepart - afterMin}分`;
+  }
+  return base;
+}
+
 function saveSettings() {
   const s = loadSettings();
   s.from = $("fromStation").value;
   s.to = $("toStation").value;
   s.searchMode = getSearchMode();
+  s.timeSearch = isTimeSearch();
+  if ($("searchTime")) s.searchTime = $("searchTime").value;
   saveSettingsObject(s);
+}
+
+function setTimeSearch(enabled) {
+  const s = loadSettings();
+  s.timeSearch = enabled;
+  saveSettingsObject(s);
+  syncTimeUI();
+  render();
+}
+
+function syncTimeUI() {
+  const on = isTimeSearch();
+  $("timeNow").classList.toggle("active", !on);
+  $("timeSpecify").classList.toggle("active", on);
+  $("timeNow").setAttribute("aria-selected", String(!on));
+  $("timeSpecify").setAttribute("aria-selected", String(on));
+  $("timeInputWrap").classList.toggle("hidden", !on);
 }
 
 function setSearchMode(mode) {
@@ -125,7 +176,9 @@ function setupStations() {
   const s = loadSettings();
   $("fromStation").value = s.from || "不動院前";
   $("toStation").value = s.to || "本通";
+  $("searchTime").value = s.searchTime || formatHHMM(nowMinutes(new Date()));
   syncModeUI();
+  syncTimeUI();
 }
 
 async function loadHolidays() {
@@ -212,25 +265,23 @@ async function loadTrips() {
   }
 }
 
-function findNextTrains(f, t, now, count = 3) {
+function findNextTrains(f, t, referenceDate, afterMin, count = 3) {
   const dir = getDirection(f, t);
-  const svc = serviceType(now);
-  const nowMin = nowMinutes(now);
+  const svc = serviceType(referenceDate);
   return trips
     .filter((x) => x.service === svc && x.direction === dir && x.times[f] != null && x.times[t] != null)
     .map((x) => ({ trip: x, depart: x.times[f], arrive: x.times[t] }))
-    .filter((x) => x.arrive >= x.depart && x.depart >= nowMin)
+    .filter((x) => x.arrive >= x.depart && x.depart >= afterMin)
     .sort((a, b) => a.depart - b.depart)
     .slice(0, count);
 }
 
-function findNextTrainsAtStation(station, now, count = 3) {
-  const svc = serviceType(now);
-  const nowMin = nowMinutes(now);
+function findNextTrainsAtStation(station, referenceDate, afterMin, count = 3) {
+  const svc = serviceType(referenceDate);
   return trips
     .filter((x) => x.service === svc && x.times[station] != null)
     .map((x) => ({ trip: x, depart: x.times[station] }))
-    .filter((x) => x.depart >= nowMin)
+    .filter((x) => x.depart >= afterMin)
     .sort((a, b) => a.depart - b.depart)
     .slice(0, count);
 }
@@ -360,22 +411,24 @@ function renderRoute(now) {
 
   const dir = getDirection(f, t);
   $("directionText").textContent = dir;
-  const next = findNextTrains(f, t, now, 3);
+  const afterMin = getSearchAfterMin(now);
+  const next = findNextTrains(f, t, now, afterMin, 3);
+  const noResultDetail = isTimeSearch()
+    ? "指定時刻以降の列車がないか、終電後の可能性があります。"
+    : "終電後、またはCSVにこの区間のデータがない可能性があります。";
 
   if (trips.length === 0) {
     renderNoTrips("時刻表CSVにデータがありません");
     return;
   }
   if (next.length === 0) {
-    renderNoTrips("この条件の列車が見つかりません", "終電後、またはCSVにこの区間のデータがない可能性があります。");
+    renderNoTrips("この条件の列車が見つかりません", noResultDetail);
     return;
   }
 
-  const nowMin = nowMinutes(now);
   const first = next[0];
-  const until = first.depart - nowMin;
   $("mainTrain").textContent = `${formatHHMM(first.depart)} 発 → ${formatHHMM(first.arrive)} 着`;
-  $("subInfo").textContent = `あと${until}分 / 所要${first.arrive - first.depart}分 / 行先 ${first.trip.destination}`;
+  $("subInfo").textContent = `${timeSearchNote(now, afterMin, first.depart)} / 所要${first.arrive - first.depart}分 / 行先 ${first.trip.destination}`;
   $("nextList").innerHTML = next
     .map(
       (x, i) => `<div class="next-item"><strong>${i === 0 ? "次" : `${i + 1}本目`}: ${formatHHMM(x.depart)} → ${formatHHMM(x.arrive)}</strong><br><span class="muted">所要${x.arrive - x.depart}分 / ${x.trip.destination}</span></div>`
@@ -386,22 +439,24 @@ function renderRoute(now) {
 function renderStation(now) {
   const station = $("fromStation").value;
   $("directionText").textContent = `${station}駅`;
-  const next = findNextTrainsAtStation(station, now, 3);
+  const afterMin = getSearchAfterMin(now);
+  const next = findNextTrainsAtStation(station, now, afterMin, 3);
+  const noResultDetail = isTimeSearch()
+    ? "指定時刻以降の列車がないか、終電後の可能性があります。"
+    : "終電後、またはCSVにこの駅のデータがない可能性があります。";
 
   if (trips.length === 0) {
     renderNoTrips("時刻表CSVにデータがありません");
     return;
   }
   if (next.length === 0) {
-    renderNoTrips("この駅の列車が見つかりません", "終電後、またはCSVにこの駅のデータがない可能性があります。");
+    renderNoTrips("この駅の列車が見つかりません", noResultDetail);
     return;
   }
 
-  const nowMin = nowMinutes(now);
   const first = next[0];
-  const until = first.depart - nowMin;
   $("mainTrain").textContent = `${formatHHMM(first.depart)} 発`;
-  $("subInfo").textContent = `あと${until}分 / ${first.trip.direction} / 行先 ${first.trip.destination}`;
+  $("subInfo").textContent = `${timeSearchNote(now, afterMin, first.depart)} / ${first.trip.direction} / 行先 ${first.trip.destination}`;
   $("nextList").innerHTML = next
     .map(
       (x, i) =>
@@ -434,6 +489,10 @@ async function init() {
   $("toStation").addEventListener("change", render);
   $("modeRoute").addEventListener("click", () => setSearchMode(MODE_ROUTE));
   $("modeStation").addEventListener("click", () => setSearchMode(MODE_STATION));
+  $("timeNow").addEventListener("click", () => setTimeSearch(false));
+  $("timeSpecify").addEventListener("click", () => setTimeSearch(true));
+  $("searchTime").addEventListener("change", render);
+  $("searchTime").addEventListener("input", render);
   $("swapButton").addEventListener("click", () => {
     const a = $("fromStation").value;
     $("fromStation").value = $("toStation").value;
