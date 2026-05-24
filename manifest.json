@@ -1,6 +1,6 @@
 {
-  "name": "次のアストラム",
-  "short_name": "アストラム",
+  "name": "Next",
+  "short_name": "Next",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f4f7fb",

@@ -110,7 +110,7 @@ function setSearchMode(mode) {
 function syncModeUI() {
   const stationMode = getSearchMode() === MODE_STATION;
   document.body.classList.toggle("station-mode", stationMode);
-  $("fromStationLabel").textContent = stationMode ? "駅" : "出発駅";
+  $("fromStationLabel").textContent = "出発駅";
   $("modeRoute").classList.toggle("active", !stationMode);
   $("modeStation").classList.toggle("active", stationMode);
   $("modeRoute").setAttribute("aria-selected", String(!stationMode));
@@ -237,7 +237,7 @@ function findNextTrainsAtStation(station, now, count = 3) {
 
 function favoriteLabel(fav) {
   const f = normalizeFavorite(fav);
-  if (f.type === MODE_STATION) return `${f.station}（駅のみ）`;
+  if (f.type === MODE_STATION) return `${f.station}（出発駅のみ）`;
   return `${f.from} → ${f.to}`;
 }
 
@@ -415,7 +415,6 @@ function render() {
   $("clock").textContent = now.toLocaleString("ja-JP", { hour12: false });
   saveSettings();
   $("serviceBadge").textContent = serviceLabel(now);
-  $("dataStatus").textContent = `収録列車: ${trips.length}本（平日/休日・上り/下り 完全収録）`;
 
   if (getSearchMode() === MODE_STATION) {
     renderStation(now);
