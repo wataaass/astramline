@@ -166,6 +166,8 @@ function syncModeUI() {
   $("modeStation").classList.toggle("active", stationMode);
   $("modeRoute").setAttribute("aria-selected", String(!stationMode));
   $("modeStation").setAttribute("aria-selected", String(stationMode));
+  $("routeResult").classList.toggle("hidden", stationMode);
+  $("stationResults").classList.toggle("hidden", !stationMode);
 }
 
 function setupStations() {
@@ -276,14 +278,51 @@ function findNextTrains(f, t, referenceDate, afterMin, count = 3) {
     .slice(0, count);
 }
 
-function findNextTrainsAtStation(station, referenceDate, afterMin, count = 3) {
+function findNextTrainsAtStation(station, direction, referenceDate, afterMin, count = 3) {
   const svc = serviceType(referenceDate);
   return trips
-    .filter((x) => x.service === svc && x.times[station] != null)
+    .filter((x) => x.service === svc && x.direction === direction && x.times[station] != null)
     .map((x) => ({ trip: x, depart: x.times[station] }))
     .filter((x) => x.depart >= afterMin)
     .sort((a, b) => a.depart - b.depart)
     .slice(0, count);
+}
+
+function maxDepartOnRoute(f, t, svc) {
+  const dir = getDirection(f, t);
+  const departs = trips
+    .filter((x) => x.service === svc && x.direction === dir && x.times[f] != null && x.times[t] != null)
+    .filter((x) => x.times[t] >= x.times[f])
+    .map((x) => x.times[f]);
+  return departs.length ? Math.max(...departs) : null;
+}
+
+function maxDepartAtStation(station, direction, svc) {
+  const departs = trips
+    .filter((x) => x.service === svc && x.direction === direction && x.times[station] != null)
+    .map((x) => x.times[station]);
+  return departs.length ? Math.max(...departs) : null;
+}
+
+function isLastTrainOnRoute(item, f, t, svc) {
+  const max = maxDepartOnRoute(f, t, svc);
+  return max !== null && item.depart === max;
+}
+
+function isLastTrainAtStation(item, station, svc) {
+  const max = maxDepartAtStation(station, item.trip.direction, svc);
+  return max !== null && item.depart === max;
+}
+
+function lastTrainBadgeHtml(isLast) {
+  return isLast ? '<span class="last-train-badge">終電</span>' : "";
+}
+
+function renderFollowingTrains(items, buildLine) {
+  if (!items.length) return "";
+  return items
+    .map((x, i) => `<div class="next-item"><strong>${i + 2}本目: ${buildLine(x)}</strong></div>`)
+    .join("");
 }
 
 function favoriteLabel(fav) {
@@ -395,6 +434,7 @@ function renderNoTrips(message, detail = "") {
   $("mainTrain").textContent = message;
   $("subInfo").textContent = detail;
   $("nextList").innerHTML = "";
+  $("stationResults").innerHTML = "";
 }
 
 function renderRoute(now) {
@@ -426,49 +466,71 @@ function renderRoute(now) {
     return;
   }
 
+  const svc = serviceType(now);
   const first = next[0];
-  $("mainTrain").textContent = `${formatHHMM(first.depart)} 発 → ${formatHHMM(first.arrive)} 着`;
+  const isLast = isLastTrainOnRoute(first, f, t, svc);
+  $("mainTrain").innerHTML = `${formatHHMM(first.depart)} 発 → ${formatHHMM(first.arrive)} 着${lastTrainBadgeHtml(isLast)}`;
   $("subInfo").textContent = `${timeSearchNote(now, afterMin, first.depart)} / 所要${first.arrive - first.depart}分 / 行先 ${first.trip.destination}`;
-  $("nextList").innerHTML = next
-    .map(
-      (x, i) => `<div class="next-item"><strong>${i === 0 ? "次" : `${i + 1}本目`}: ${formatHHMM(x.depart)} → ${formatHHMM(x.arrive)}</strong><br><span class="muted">所要${x.arrive - x.depart}分 / ${x.trip.destination}</span></div>`
-    )
-    .join("");
+  $("nextList").innerHTML = renderFollowingTrains(next.slice(1), (x) => {
+    const last = isLastTrainOnRoute(x, f, t, svc);
+    return `${formatHHMM(x.depart)} → ${formatHHMM(x.arrive)}${last ? "（終電）" : ""}<br><span class="muted">所要${x.arrive - x.depart}分 / ${x.trip.destination}</span>`;
+  });
+}
+
+function renderStationDirectionBlock(station, direction, now, afterMin) {
+  const svc = serviceType(now);
+  const next = findNextTrainsAtStation(station, direction, now, afterMin, 3);
+  const noResultDetail = isTimeSearch()
+    ? "指定時刻以降の列車がないか、終電後の可能性があります。"
+    : "終電後、またはこの方面のデータがありません。";
+
+  if (next.length === 0) {
+    return `<section class="direction-block"><h3>${direction}</h3><p class="muted">この条件の列車が見つかりません</p><p class="muted">${noResultDetail}</p></section>`;
+  }
+
+  const first = next[0];
+  const isLast = isLastTrainAtStation(first, station, svc);
+  const following = renderFollowingTrains(next.slice(1), (x) => {
+    const last = isLastTrainAtStation(x, station, svc);
+    return `${formatHHMM(x.depart)} 発${last ? "（終電）" : ""}<br><span class="muted">行先 ${x.trip.destination}</span>`;
+  });
+
+  return `<section class="direction-block">
+<h3>${direction}</h3>
+<div class="result-primary">
+<h4>${formatHHMM(first.depart)} 発${lastTrainBadgeHtml(isLast)}</h4>
+<p class="sub-line muted">${timeSearchNote(now, afterMin, first.depart)} / 行先 ${first.trip.destination}</p>
+</div>
+<div class="next-list">${following}</div>
+</section>`;
 }
 
 function renderStation(now) {
   const station = $("fromStation").value;
   $("directionText").textContent = `${station}駅`;
   const afterMin = getSearchAfterMin(now);
-  const next = findNextTrainsAtStation(station, now, afterMin, 3);
-  const noResultDetail = isTimeSearch()
-    ? "指定時刻以降の列車がないか、終電後の可能性があります。"
-    : "終電後、またはCSVにこの駅のデータがない可能性があります。";
 
   if (trips.length === 0) {
-    renderNoTrips("時刻表CSVにデータがありません");
-    return;
-  }
-  if (next.length === 0) {
-    renderNoTrips("この駅の列車が見つかりません", noResultDetail);
+    $("stationResults").innerHTML = '<p class="muted">時刻表CSVにデータがありません</p>';
     return;
   }
 
-  const first = next[0];
-  $("mainTrain").textContent = `${formatHHMM(first.depart)} 発`;
-  $("subInfo").textContent = `${timeSearchNote(now, afterMin, first.depart)} / ${first.trip.direction} / 行先 ${first.trip.destination}`;
-  $("nextList").innerHTML = next
-    .map(
-      (x, i) =>
-        `<div class="next-item"><strong>${i === 0 ? "次" : `${i + 1}本目`}: ${formatHHMM(x.depart)} 発</strong><br><span class="muted">${x.trip.direction} / 行先 ${x.trip.destination}</span></div>`
-    )
-    .join("");
+  $("stationResults").innerHTML =
+    renderStationDirectionBlock(station, DIRECTION_HONDORI, now, afterMin) +
+    renderStationDirectionBlock(station, DIRECTION_KOIKI, now, afterMin);
 }
 
 function render() {
   const now = new Date();
-  $("clock").textContent = now.toLocaleString("ja-JP", { hour12: false });
+  $("clock").textContent = now.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  $("footerDate").textContent = now.toLocaleDateString("ja-JP", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  });
   saveSettings();
+  syncModeUI();
   $("serviceBadge").textContent = serviceLabel(now);
 
   if (getSearchMode() === MODE_STATION) {
